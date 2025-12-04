@@ -1,6 +1,6 @@
 import User from '../models/User.js';
 import { generateToken } from '../config/auth.js';
-import bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 class AuthController {
   // Registro de novo usuário
