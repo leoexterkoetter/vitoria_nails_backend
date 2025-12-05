@@ -33,23 +33,32 @@ const userSchema = new mongoose.Schema({
 userSchema.index({ email: 1 });
 userSchema.index({ role: 1 });
 
+// Hash da senha antes de salvar
+userSchema.pre('save', async function(next) {
+  if (!this.isModified('password')) return next();
+  try {
+    const hash = await bcrypt.hash(this.password, SALT_ROUNDS);
+    this.password = hash;
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
+
 class UserClass {
   // Criar novo usuário
-  static async create({ name, email, password, phone, role = 'user' }) {
+  static async createUser({ name, email, password, phone, role = 'user' }) {
     try {
-      const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
-      
-      const user = await this.model('User').create({
+      const user = new this({
         name,
         email,
-        password: hashedPassword,
+        password,
         phone,
         role
       });
-
-      // Retornar sem a senha
+      await user.save();
       const userObj = user.toObject();
-      delete userObj.password;
+      delete userObj.password; // remover senha do retorno
       return userObj;
     } catch (error) {
       throw error;
@@ -59,56 +68,36 @@ class UserClass {
   // Buscar usuário por email
   static async findByEmail(email) {
     try {
-      return await this.model('User').findOne({ email }).lean();
+      return await this.findOne({ email });
     } catch (error) {
       throw error;
     }
   }
 
   // Buscar usuário por ID
-  static async findById(id) {
+  static async findByIdWithoutPassword(id) {
     try {
-      return await this.model('User')
-        .findById(id)
-        .select('-password')
-        .lean();
-    } catch (error) {
-      throw error;
-    }
-  }
-
-  // Listar todos os usuários (admin)
-  static async findAll() {
-    try {
-      return await this.model('User')
-        .find({ role: 'user' })
-        .select('-password')
-        .sort({ createdAt: -1 })
-        .lean();
+      return await this.findById(id).select('-password');
     } catch (error) {
       throw error;
     }
   }
 
   // Atualizar usuário
-  static async update(id, data) {
+  static async updateUser(id, data) {
     try {
       const { name, email, phone, avatar_url } = data;
       const updateData = {};
-
       if (name !== undefined) updateData.name = name;
       if (email !== undefined) updateData.email = email;
       if (phone !== undefined) updateData.phone = phone;
       if (avatar_url !== undefined) updateData.avatar_url = avatar_url;
 
-      const user = await this.model('User')
-        .findByIdAndUpdate(
-          id,
-          updateData,
-          { new: true, runValidators: true }
-        )
-        .select('-password')
-        .lean();
+      const user = await this.findByIdAndUpdate(
+        id,
+        updateData,
+        { new: true, runValidators: true }
+      ).select('-password');
 
       return user;
     } catch (error) {
@@ -121,17 +110,26 @@ class UserClass {
     return bcrypt.compare(plainPassword, hashedPassword);
   }
 
+  // Listar todos os usuários (admin)
+  static async findAllUsers() {
+    try {
+      return await this.find({ role: 'user' }).select('-password').sort({ createdAt: -1 });
+    } catch (error) {
+      throw error;
+    }
+  }
+
   // Contar total de clientes
   static async countClients() {
     try {
-      return await this.model('User').countDocuments({ role: 'user' });
+      return await this.countDocuments({ role: 'user' });
     } catch (error) {
       throw error;
     }
   }
 }
 
-// Aplicar a classe ao schema
+// Aplicar classe ao schema
 userSchema.loadClass(UserClass);
 
 const User = mongoose.model('User', userSchema);

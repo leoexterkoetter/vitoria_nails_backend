@@ -1,6 +1,5 @@
 import User from '../models/User.js';
 import { generateToken } from '../config/auth.js';
-import bcrypt from 'bcryptjs';
 
 class AuthController {
   // Registro de novo usuário
@@ -12,35 +11,20 @@ class AuthController {
         return res.status(400).json({ error: 'Nome, email e senha são obrigatórios' });
       }
 
-      const existingUser = await User.findOne({ email });
+      const existingUser = await User.findByEmail(email);
       if (existingUser) {
         return res.status(400).json({ error: 'Email já cadastrado' });
       }
 
-      // Hash da senha
-      const hashedPassword = await bcrypt.hash(password, 10);
-
-      // Criar usuário
-      const user = await User.create({
-        name,
-        email,
-        password: hashedPassword,
-        phone,
-        role: 'user'
-      });
+      // Criar usuário (hash automático no model)
+      const user = await User.createUser({ name, email, password, phone });
 
       // Gerar token
       const token = generateToken(user._id, user.role);
 
       res.status(201).json({
         message: 'Usuário cadastrado com sucesso',
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          phone: user.phone,
-          role: user.role
-        },
+        user,
         token
       });
     } catch (error) {
@@ -58,31 +42,24 @@ class AuthController {
         return res.status(400).json({ error: 'Email e senha são obrigatórios' });
       }
 
-      const user = await User.findOne({ email });
+      const user = await User.findByEmail(email);
       if (!user) {
         return res.status(401).json({ error: 'Email ou senha inválidos' });
       }
 
-      if (!user.password) {
-        return res.status(500).json({ error: 'Senha do usuário não encontrada' });
-      }
-
-      const validPassword = await bcrypt.compare(password, user.password);
+      const validPassword = await User.verifyPassword(password, user.password);
       if (!validPassword) {
         return res.status(401).json({ error: 'Email ou senha inválidos' });
       }
 
       const token = generateToken(user._id, user.role || 'user');
 
+      // Retorna sem senha
+      const { password: _, ...userWithoutPassword } = user.toObject();
+
       res.json({
         message: 'Login realizado com sucesso',
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          phone: user.phone,
-          role: user.role || 'user'
-        },
+        user: userWithoutPassword,
         token
       });
     } catch (error) {
@@ -94,7 +71,7 @@ class AuthController {
   // Obter dados do usuário autenticado
   static async me(req, res) {
     try {
-      const user = await User.findById(req.userId).select('-password');
+      const user = await User.findByIdWithoutPassword(req.userId);
       if (!user) {
         return res.status(404).json({ error: 'Usuário não encontrado' });
       }
