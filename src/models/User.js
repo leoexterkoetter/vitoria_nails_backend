@@ -11,7 +11,9 @@ const userSchema = new mongoose.Schema({
   email: {
     type: String,
     required: true,
-    unique: true
+    unique: true,
+    lowercase: true,
+    trim: true
   },
   password: {
     type: String,
@@ -45,92 +47,93 @@ userSchema.pre('save', async function(next) {
   }
 });
 
-class UserClass {
-  // Criar novo usuário
-  static async createUser({ name, email, password, phone, role = 'user' }) {
-    try {
-      const user = new this({
-        name,
-        email,
-        password,
-        phone,
-        role
-      });
-      await user.save();
-      const userObj = user.toObject();
-      delete userObj.password; // remover senha do retorno
-      return userObj;
-    } catch (error) {
-      throw error;
-    }
+// Métodos estáticos
+userSchema.statics.createUser = async function({ name, email, password, phone, role = 'user' }) {
+  try {
+    const user = new this({
+      name,
+      email,
+      password,
+      phone,
+      role
+    });
+    await user.save();
+    const userObj = user.toObject();
+    delete userObj.password;
+    return userObj;
+  } catch (error) {
+    throw error;
   }
+};
 
-  // Buscar usuário por email
-  static async findByEmail(email) {
-    try {
-      return await this.findOne({ email });
-    } catch (error) {
-      throw error;
-    }
+userSchema.statics.findByEmail = async function(email) {
+  try {
+    return await this.findOne({ email: email.toLowerCase().trim() });
+  } catch (error) {
+    throw error;
   }
+};
 
-  // Buscar usuário por ID
-  static async findByIdWithoutPassword(id) {
-    try {
-      return await this.findById(id).select('-password');
-    } catch (error) {
-      throw error;
-    }
+userSchema.statics.findByIdWithoutPassword = async function(id) {
+  try {
+    return await this.findById(id).select('-password');
+  } catch (error) {
+    throw error;
   }
+};
 
-  // Atualizar usuário
-  static async updateUser(id, data) {
-    try {
-      const { name, email, phone, avatar_url } = data;
-      const updateData = {};
-      if (name !== undefined) updateData.name = name;
-      if (email !== undefined) updateData.email = email;
-      if (phone !== undefined) updateData.phone = phone;
-      if (avatar_url !== undefined) updateData.avatar_url = avatar_url;
+userSchema.statics.updateUser = async function(id, data) {
+  try {
+    const { name, email, phone, avatar_url } = data;
+    const updateData = {};
+    if (name !== undefined) updateData.name = name;
+    if (email !== undefined) updateData.email = email;
+    if (phone !== undefined) updateData.phone = phone;
+    if (avatar_url !== undefined) updateData.avatar_url = avatar_url;
 
-      const user = await this.findByIdAndUpdate(
-        id,
-        updateData,
-        { new: true, runValidators: true }
-      ).select('-password');
+    const user = await this.findByIdAndUpdate(
+      id,
+      updateData,
+      { new: true, runValidators: true }
+    ).select('-password');
 
-      return user;
-    } catch (error) {
-      throw error;
-    }
+    return user;
+  } catch (error) {
+    throw error;
   }
+};
 
-  // Verificar senha
-  static async verifyPassword(plainPassword, hashedPassword) {
-    return bcrypt.compare(plainPassword, hashedPassword);
+// CORRIGIDO: Método estático para verificar senha
+userSchema.statics.verifyPassword = async function(plainPassword, hashedPassword) {
+  try {
+    return await bcrypt.compare(plainPassword, hashedPassword);
+  } catch (error) {
+    console.error('Erro ao verificar senha:', error);
+    return false;
   }
+};
 
-  // Listar todos os usuários (admin)
-  static async findAllUsers() {
-    try {
-      return await this.find({ role: 'user' }).select('-password').sort({ createdAt: -1 });
-    } catch (error) {
-      throw error;
-    }
+// CORRIGIDO: Adicionado método findAll que era chamado mas não existia
+userSchema.statics.findAll = async function() {
+  try {
+    return await this.find({ role: 'user' }).select('-password').sort({ createdAt: -1 });
+  } catch (error) {
+    throw error;
   }
+};
 
-  // Contar total de clientes
-  static async countClients() {
-    try {
-      return await this.countDocuments({ role: 'user' });
-    } catch (error) {
-      throw error;
-    }
+// Manter compatibilidade com nome antigo
+userSchema.statics.findAllUsers = async function() {
+  return this.findAll();
+};
+
+userSchema.statics.countClients = async function() {
+  try {
+    return await this.countDocuments({ role: 'user' });
+  } catch (error) {
+    throw error;
   }
-}
-
-// Aplicar classe ao schema
-userSchema.loadClass(UserClass);
+};
 
 const User = mongoose.model('User', userSchema);
 
