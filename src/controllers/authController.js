@@ -8,52 +8,44 @@ class AuthController {
     try {
       const { name, email, password, phone } = req.body;
 
-      // Validar campos obrigatórios
       if (!name || !email || !password) {
-        return res.status(400).json({
-          error: 'Nome, email e senha são obrigatórios'
-        });
+        return res.status(400).json({ error: 'Nome, email e senha são obrigatórios' });
       }
 
-      // Verificar se email já existe
       const existingUser = await User.findOne({ email });
       if (existingUser) {
-        return res.status(400).json({
-          error: 'Email já cadastrado'
-        });
+        return res.status(400).json({ error: 'Email já cadastrado' });
       }
 
-      // Criar usuário utilizando o model corretamente
+      // Hash da senha
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      // Criar usuário
       const user = await User.create({
         name,
         email,
-        password,
+        password: hashedPassword,
         phone,
-        role: 'user' // garante que SEMPRE tenha role
+        role: 'user'
       });
 
-      // Buscar o usuário completo novamente (com role garantida)
-      const fullUser = await User.findOne({ email }).lean();
-
       // Gerar token
-      const token = generateToken(fullUser._id, fullUser.role);
+      const token = generateToken(user._id, user.role);
 
       res.status(201).json({
         message: 'Usuário cadastrado com sucesso',
         user: {
-          id: fullUser._id,
-          name: fullUser.name,
-          email: fullUser.email,
-          phone: fullUser.phone,
-          role: fullUser.role
+          id: user._id,
+          name: user.name,
+          email: user.email,
+          phone: user.phone,
+          role: user.role
         },
         token
       });
     } catch (error) {
       console.error('Erro no registro:', error);
-      res.status(500).json({
-        error: 'Erro ao cadastrar usuário'
-      });
+      res.status(500).json({ error: 'Erro ao cadastrar usuário' });
     }
   }
 
@@ -63,32 +55,24 @@ class AuthController {
       const { email, password } = req.body;
 
       if (!email || !password) {
-        return res.status(400).json({
-          error: 'Email e senha são obrigatórios'
-        });
+        return res.status(400).json({ error: 'Email e senha são obrigatórios' });
       }
 
-      // Buscar usuário
       const user = await User.findOne({ email });
       if (!user) {
-        return res.status(401).json({
-          error: 'Email ou senha inválidos'
-        });
+        return res.status(401).json({ error: 'Email ou senha inválidos' });
       }
 
-      // Verificar senha
+      if (!user.password) {
+        return res.status(500).json({ error: 'Senha do usuário não encontrada' });
+      }
+
       const validPassword = await bcrypt.compare(password, user.password);
       if (!validPassword) {
-        return res.status(401).json({
-          error: 'Email ou senha inválidos'
-        });
+        return res.status(401).json({ error: 'Email ou senha inválidos' });
       }
 
-      // Garante que sempre exista role
-      const role = user.role || 'user';
-
-      // Gerar token
-      const token = generateToken(user._id, role);
+      const token = generateToken(user._id, user.role || 'user');
 
       res.json({
         message: 'Login realizado com sucesso',
@@ -97,15 +81,13 @@ class AuthController {
           name: user.name,
           email: user.email,
           phone: user.phone,
-          role
+          role: user.role || 'user'
         },
         token
       });
     } catch (error) {
       console.error('Erro no login:', error);
-      res.status(500).json({
-        error: 'Erro ao fazer login'
-      });
+      res.status(500).json({ error: 'Erro ao fazer login' });
     }
   }
 
@@ -113,19 +95,13 @@ class AuthController {
   static async me(req, res) {
     try {
       const user = await User.findById(req.userId).select('-password');
-
       if (!user) {
-        return res.status(404).json({
-          error: 'Usuário não encontrado'
-        });
+        return res.status(404).json({ error: 'Usuário não encontrado' });
       }
-
       res.json({ user });
     } catch (error) {
       console.error('Erro ao buscar usuário:', error);
-      res.status(500).json({
-        error: 'Erro ao buscar dados do usuário'
-      });
+      res.status(500).json({ error: 'Erro ao buscar dados do usuário' });
     }
   }
 }
