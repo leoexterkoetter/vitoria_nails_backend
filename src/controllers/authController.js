@@ -23,29 +23,29 @@ class AuthController {
         });
       }
 
-      // Hash da senha
-      const hashedPassword = await bcrypt.hash(password, 10);
-
-      // Criar usuário direto
-      const user = new User({ 
-        name, 
-        email, 
-        password: hashedPassword, 
-        phone 
+      // Criar usuário utilizando o model corretamente
+      const user = await User.create({
+        name,
+        email,
+        password,
+        phone,
+        role: 'user' // garante que SEMPRE tenha role
       });
-      await user.save();
+
+      // Buscar o usuário completo novamente (com role garantida)
+      const fullUser = await User.findOne({ email }).lean();
 
       // Gerar token
-      const token = generateToken(user._id, user.role);
+      const token = generateToken(fullUser._id, fullUser.role);
 
       res.status(201).json({
         message: 'Usuário cadastrado com sucesso',
         user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          phone: user.phone,
-          role: user.role
+          id: fullUser._id,
+          name: fullUser.name,
+          email: fullUser.email,
+          phone: fullUser.phone,
+          role: fullUser.role
         },
         token
       });
@@ -62,7 +62,6 @@ class AuthController {
     try {
       const { email, password } = req.body;
 
-      // Validar campos
       if (!email || !password) {
         return res.status(400).json({
           error: 'Email e senha são obrigatórios'
@@ -85,8 +84,11 @@ class AuthController {
         });
       }
 
+      // Garante que sempre exista role
+      const role = user.role || 'user';
+
       // Gerar token
-      const token = generateToken(user._id, user.role);
+      const token = generateToken(user._id, role);
 
       res.json({
         message: 'Login realizado com sucesso',
@@ -95,7 +97,7 @@ class AuthController {
           name: user.name,
           email: user.email,
           phone: user.phone,
-          role: user.role
+          role
         },
         token
       });
