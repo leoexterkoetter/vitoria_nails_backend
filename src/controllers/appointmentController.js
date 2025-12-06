@@ -1,6 +1,7 @@
 import Appointment from '../models/Appointment.js';
 import TimeSlot from '../models/TimeSlot.js';
 import Service from '../models/Service.js';
+import mongoose from 'mongoose';
 
 class AppointmentController {
   
@@ -138,22 +139,81 @@ class AppointmentController {
     }
   }
 
-  // Buscar horários disponíveis
+  // ⭐ MÉTODO CORRIGIDO - Buscar horários disponíveis
   static async getAvailableSlots(req, res) {
     try {
-      const { date, serviceId } = req.query;
+      const { date, serviceId } = req.query; // ✅ req.query, não req.params
 
-      if (!date) {
-        return res.status(400).json({ error: 'Data é obrigatória' });
+      console.log('📞 [getAvailableSlots] Requisição recebida');
+      console.log('   Query params:', req.query);
+      console.log('   Date:', date);
+      console.log('   Service ID:', serviceId);
+
+      // ⭐ MUDANÇA: serviceId agora é obrigatório para remanejamento
+      if (!serviceId) {
+        console.log('❌ serviceId não fornecido');
+        return res.status(400).json({ 
+          error: 'O parâmetro serviceId é obrigatório' 
+        });
       }
 
-      const slots = await TimeSlot.findAvailableByDate(date, serviceId);
+      // Validação: formato do ObjectId
+      if (!mongoose.Types.ObjectId.isValid(serviceId)) {
+        console.log('❌ serviceId inválido:', serviceId);
+        return res.status(400).json({ 
+          error: 'serviceId possui formato inválido' 
+        });
+      }
+
+      // Buscar o serviço para validar
+      const service = await Service.findById(serviceId);
+      if (!service) {
+        console.log('❌ Serviço não encontrado:', serviceId);
+        return res.status(404).json({ 
+          error: 'Serviço não encontrado' 
+        });
+      }
+
+      console.log('✅ Serviço encontrado:', service.name);
+
+      // ⭐ Se houver método personalizado no modelo, usa ele
+      if (typeof TimeSlot.findAvailableByDate === 'function') {
+        console.log('📋 Usando método personalizado findAvailableByDate');
+        const slots = await TimeSlot.findAvailableByDate(date, serviceId);
+        console.log(`   ${slots.length} slots encontrados`);
+        return res.json(slots);
+      }
+
+      // ⭐ Caso contrário, busca manual
+      console.log('📋 Usando busca manual de slots');
+      
+      // Montar query
+      const query = { available: true };
+
+      // Se data foi fornecida, filtra por data específica
+      if (date) {
+        query.date = date;
+      } else {
+        // Se não, pega datas de hoje em diante
+        const today = new Date().toISOString().split('T')[0];
+        query.date = { $gte: today };
+      }
+
+      console.log('   Query:', JSON.stringify(query));
+
+      const slots = await TimeSlot.find(query)
+        .sort({ date: 1, start_time: 1 });
+
+      console.log(`✅ ${slots.length} slots disponíveis encontrados`);
 
       return res.json(slots);
 
     } catch (error) {
-      console.error('Erro ao buscar horários:', error);
-      return res.status(500).json({ error: 'Erro ao buscar horários disponíveis' });
+      console.error('❌ Erro ao buscar horários:', error);
+      return res.status(500).json({ 
+        error: 'Erro ao buscar horários disponíveis',
+        details: error.message 
+      });
     }
   }
 }
